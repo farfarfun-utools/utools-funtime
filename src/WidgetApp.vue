@@ -25,7 +25,8 @@ function initialSnapshot(): WidgetLiveSnapshot {
 
 const snapshot = reactive<WidgetLiveSnapshot>(initialSnapshot())
 const nowMs = ref(Date.now())
-let tickHandle: number | null = null
+let rafHandle: number | null = null
+let fallbackTimer: number | null = null
 let bridge: ReturnType<typeof createSyncBridge> | null = null
 
 const stopwatchElapsedMs = computed(() => {
@@ -100,6 +101,20 @@ function handleClose() {
   window.close()
 }
 
+function startTickLoop() {
+  const step = () => {
+    nowMs.value = Date.now()
+    rafHandle = window.requestAnimationFrame(step)
+  }
+  if (typeof window.requestAnimationFrame === 'function') {
+    rafHandle = window.requestAnimationFrame(step)
+  }
+  // Keep clock updating smoothly even when window is unfocused/backgrounded
+  fallbackTimer = window.setInterval(() => {
+    nowMs.value = Date.now()
+  }, 16)
+}
+
 onMounted(() => {
   bridge = createSyncBridge((msg) => {
     if (msg.type === 'snapshot') {
@@ -107,14 +122,13 @@ onMounted(() => {
     }
   })
   bridge.post({ type: 'request-sync' })
-  tickHandle = window.setInterval(() => {
-    nowMs.value = Date.now()
-  }, 60)
+  startTickLoop()
 })
 
 onBeforeUnmount(() => {
   bridge?.close()
-  if (tickHandle !== null) window.clearInterval(tickHandle)
+  if (rafHandle !== null) window.cancelAnimationFrame(rafHandle)
+  if (fallbackTimer !== null) window.clearInterval(fallbackTimer)
 })
 </script>
 

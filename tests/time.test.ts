@@ -1,13 +1,16 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import {
   computeLapStats,
+  formatClockWithMs,
   formatCountdown,
   formatDurationLabel,
   formatStopwatch,
+  getNextTargetCountdown,
   getTimerProgress,
   getTimerRemainingMs,
   lapsToCsv,
   parseDurationExpression,
+  parseTargetClockTime,
   type CountdownTimer,
 } from '../src/lib/time'
 import {
@@ -89,6 +92,35 @@ describe('time utilities', () => {
     const csv = lapsToCsv(laps)
     expect(csv.split('\n')).toHaveLength(4)
     expect(csv).toContain('1,00:00:12.50,00:00:12.50,12500,12500')
+  })
+
+  it('formats millisecond snipe clock with offset compensation and target countdown urgency', () => {
+    const base = new Date(2026, 10, 23, 19, 59, 57, 250).getTime()
+    expect(formatClockWithMs(base, 0)).toEqual({
+      hms: '19:59:57',
+      ms: '250',
+      full: '19:59:57.250',
+    })
+    expect(formatClockWithMs(base, 150)).toEqual({
+      hms: '19:59:57',
+      ms: '400',
+      full: '19:59:57.400',
+    })
+
+    expect(parseTargetClockTime('20:00:00')).toEqual({ hours: 20, minutes: 0, seconds: 0 })
+    expect(parseTargetClockTime('09:30')).toEqual({ hours: 9, minutes: 30, seconds: 0 })
+    expect(parseTargetClockTime('25:00')).toBeNull()
+
+    const critical = getNextTargetCountdown(base, '20:00:00', 0)
+    expect(critical?.urgency).toBe('critical')
+    expect(critical?.formatted).toBe('00:02.750')
+
+    const warn = getNextTargetCountdown(new Date(2026, 10, 23, 19, 59, 52, 0).getTime(), '20:00:00', 0)
+    expect(warn?.urgency).toBe('warn')
+
+    const go = getNextTargetCountdown(new Date(2026, 10, 23, 20, 0, 0, 500).getTime(), '20:00:00', 0)
+    expect(go?.urgency).toBe('go')
+    expect(go?.remainingMs).toBe(0)
   })
 })
 

@@ -3,8 +3,10 @@ import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 import type { Locale, WidgetConfig, WidgetDisplayMode } from '../lib/storage'
 import {
+  formatClockWithMs,
   formatCountdown,
   formatStopwatch,
+  getNextTargetCountdown,
   getTimerProgress,
   getTimerRemainingMs,
   type CountdownTimer,
@@ -40,11 +42,18 @@ const countdownText = computed(() => formatCountdown(countdownRemainingMs.value)
 const stopwatchText = computed(() => formatStopwatch(props.stopwatchElapsedMs))
 
 const localParts = computed(() => getZonedDateParts(nowDate.value, getLocalTimeZone(), props.locale))
+const msClock = computed(() => formatClockWithMs(props.nowMs, props.config.msOffsetMs ?? 0))
+const snipeInfo = computed(() =>
+  props.config.snipeTarget
+    ? getNextTargetCountdown(props.nowMs, props.config.snipeTarget, props.config.msOffsetMs ?? 0)
+    : null,
+)
 const dualA = computed(() => getCityClockSnapshot(props.config.dualZoneA, nowDate.value, props.locale))
 const dualB = computed(() => getCityClockSnapshot(props.config.dualZoneB, nowDate.value, props.locale))
 
 const modes: Array<{ id: WidgetDisplayMode; labelZh: string; labelEn: string }> = [
   { id: 'countdown', labelZh: '倒计时', labelEn: 'Timer' },
+  { id: 'msclock', labelZh: '毫秒时钟', labelEn: 'Ms Clock' },
   { id: 'stopwatch', labelZh: '秒表', labelEn: 'Watch' },
   { id: 'clock', labelZh: '时钟', labelEn: 'Clock' },
   { id: 'dual', labelZh: '双时区', labelEn: 'Dual' },
@@ -71,12 +80,30 @@ function cycleMode() {
     <!-- Compact Pill Layout -->
     <template v-if="config.style === 'compact'">
       <div class="compact-row">
-        <span class="pulse-dot" :class="{ running: (config.mode === 'countdown' && activeTimer.running) || (config.mode === 'stopwatch' && stopwatchRunning) || config.mode === 'clock' || config.mode === 'dual' }" />
+        <span
+          class="pulse-dot"
+          :class="[
+            {
+              running:
+                (config.mode === 'countdown' && activeTimer.running) ||
+                (config.mode === 'stopwatch' && stopwatchRunning) ||
+                config.mode === 'clock' ||
+                config.mode === 'msclock' ||
+                config.mode === 'dual',
+            },
+            config.mode === 'msclock' && snipeInfo ? `urgency-${snipeInfo.urgency}` : '',
+          ]"
+        />
 
         <div class="compact-readout">
           <template v-if="config.mode === 'countdown'">
             <span class="compact-time mono">{{ countdownText }}</span>
             <span class="compact-tag">{{ activeTimer.label }}</span>
+          </template>
+          <template v-else-if="config.mode === 'msclock'">
+            <span class="compact-time mono" data-testid="widget-msclock-readout">
+              {{ msClock.hms }}<small class="ms-accent">.{{ msClock.ms }}</small>
+            </span>
           </template>
           <template v-else-if="config.mode === 'stopwatch'">
             <span class="compact-time mono">{{ stopwatchText.main }}<small>.{{ stopwatchText.centis }}</small></span>
@@ -140,16 +167,26 @@ function cycleMode() {
         <div class="card-title-row">
           <span
             class="pulse-dot"
-            :class="{
-              running:
-                (config.mode === 'countdown' && activeTimer.running) ||
-                (config.mode === 'stopwatch' && stopwatchRunning) ||
-                config.mode === 'clock' ||
-                config.mode === 'dual',
-            }"
+            :class="[
+              {
+                running:
+                  (config.mode === 'countdown' && activeTimer.running) ||
+                  (config.mode === 'stopwatch' && stopwatchRunning) ||
+                  config.mode === 'clock' ||
+                  config.mode === 'msclock' ||
+                  config.mode === 'dual',
+              },
+              config.mode === 'msclock' && snipeInfo ? `urgency-${snipeInfo.urgency}` : '',
+            ]"
           />
           <span class="card-label">
             <template v-if="config.mode === 'countdown'">{{ activeTimer.label }}</template>
+            <template v-else-if="config.mode === 'msclock'">
+              {{ locale === 'en' ? 'Millisecond Precision Clock' : '准点抢购 · 毫秒时钟' }}
+              <span v-if="config.msOffsetMs" class="offset-tag mono">
+                {{ config.msOffsetMs > 0 ? `+${config.msOffsetMs}ms` : `${config.msOffsetMs}ms` }}
+              </span>
+            </template>
             <template v-else-if="config.mode === 'stopwatch'">{{ locale === 'en' ? 'Stopwatch' : '精密秒表' }}</template>
             <template v-else-if="config.mode === 'clock'">{{ localParts.dateStr }} · {{ localParts.weekday }}</template>
             <template v-else>{{ locale === 'en' ? 'Dual World Clock' : '世界双时区' }}</template>
@@ -221,6 +258,26 @@ function cycleMode() {
             >
               <AppIcon name="rotate-ccw" :size="13" />
             </button>
+          </div>
+        </template>
+
+        <template v-else-if="config.mode === 'msclock'">
+          <div class="msclock-wrap">
+            <div class="big-readout ms-readout mono" data-testid="widget-msclock-readout">
+              {{ msClock.hms }}<span class="ms-digits" :class="snipeInfo ? `urgency-${snipeInfo.urgency}` : ''">.{{ msClock.ms }}</span>
+            </div>
+            <div v-if="snipeInfo" class="snipe-bar mono" :class="`urgency-${snipeInfo.urgency}`">
+              <span v-if="snipeInfo.urgency === 'go'">
+                ⚡ {{ snipeInfo.targetLabel }} · GO!
+              </span>
+              <span v-else>
+                {{ locale === 'en' ? `To ${snipeInfo.targetLabel}` : `距 ${snipeInfo.targetLabel}` }}
+                · {{ snipeInfo.formatted }}
+              </span>
+            </div>
+            <div v-else class="ms-sub mono">
+              {{ localParts.dateStr }} {{ localParts.weekday }} · {{ dualA.utcOffsetStr }}
+            </div>
           </div>
         </template>
 
@@ -517,5 +574,89 @@ function cycleMode() {
   background: linear-gradient(90deg, #0d9488, #2dd4bf);
   border-radius: 999px;
   transition: width 0.2s linear;
+}
+
+.msclock-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ms-readout {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+
+.ms-digits,
+.ms-accent {
+  color: #2dd4bf;
+  font-weight: 800;
+}
+
+.theme-light .ms-digits,
+.theme-light .ms-accent {
+  color: #0d9488;
+}
+
+.ms-digits.urgency-warn,
+.snipe-bar.urgency-warn {
+  color: #fbbf24;
+}
+
+.ms-digits.urgency-critical,
+.snipe-bar.urgency-critical {
+  color: #f87171;
+}
+
+.ms-digits.urgency-go,
+.snipe-bar.urgency-go {
+  color: #34d399;
+}
+
+.pulse-dot.urgency-warn {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.28);
+}
+
+.pulse-dot.urgency-critical {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.32);
+}
+
+.pulse-dot.urgency-go {
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35);
+}
+
+.ms-sub {
+  font-size: 10.5px;
+  opacity: 0.7;
+}
+
+.snipe-bar {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(20, 184, 166, 0.16);
+  color: #5eead4;
+}
+
+.theme-light .snipe-bar {
+  background: rgba(13, 148, 136, 0.12);
+  color: #0f766e;
+}
+
+.offset-tag {
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
 }
 </style>

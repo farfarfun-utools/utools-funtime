@@ -471,7 +471,7 @@ onMounted(() => {
   })
   broadcastSnapshot()
 
-  tickHandle = window.setInterval(handleTick, 50)
+  tickHandle = window.setInterval(handleTick, 16)
 
   if (window.funtime?.onEnter) {
     unsubscribeEnter = window.funtime.onEnter((action) => {
@@ -490,7 +490,12 @@ onMounted(() => {
       }
       if (action.code === 'time-float') {
         state.activeView = 'widget'
-        openFloatingWidget()
+        const payloadStr = typeof action.payload === 'string' ? action.payload : ''
+        if (/毫秒|抢购|snipe|ms/i.test(payloadStr)) {
+          openFloatingWidget('msclock')
+        } else {
+          openFloatingWidget()
+        }
         return
       }
       if (action.code === 'time-quick' && typeof action.payload === 'string') {
@@ -621,6 +626,16 @@ onBeforeUnmount(() => {
           </span>
           <button
             type="button"
+            class="btn btn-sm"
+            data-testid="topbar-msfloat-btn"
+            :title="state.settings.locale === 'en' ? 'Open millisecond snipe clock widget' : '弹出准点抢购毫秒悬浮时钟'"
+            @click="openFloatingWidget('msclock')"
+          >
+            <AppIcon name="clock" :size="13" />
+            <span class="hide-narrow">{{ t(state.settings.locale, 'action.msFloat') }}</span>
+          </button>
+          <button
+            type="button"
             class="btn btn-sm btn-primary"
             data-testid="topbar-float-btn"
             @click="
@@ -629,7 +644,9 @@ onBeforeUnmount(() => {
                   ? 'stopwatch'
                   : state.activeView === 'worldclock'
                     ? 'dual'
-                    : 'countdown',
+                    : state.activeView === 'widget'
+                      ? state.widget.mode
+                      : 'countdown',
               )
             "
           >
@@ -692,7 +709,7 @@ onBeforeUnmount(() => {
           :now-ms="nowMs"
           :locale="state.settings.locale"
           @update:config="updateWidgetConfig"
-          @open-widget="openFloatingWidget()"
+          @open-widget="(mode) => openFloatingWidget(mode)"
           @close-widget="closeFloatingWidget"
           @toggle-countdown="toggleTimer(activeTimer.id)"
           @reset-countdown="resetTimer(activeTimer.id)"

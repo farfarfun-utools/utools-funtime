@@ -151,10 +151,12 @@ try {
       style: 'standard',
       theme: 'dark',
       opacity: 0.96,
-      mode: 'countdown',
+      mode: 'msclock',
       alwaysOnTop: true,
       dualZoneA: 'Asia/Shanghai',
       dualZoneB: 'America/New_York',
+      msOffsetMs: 0,
+      snipeTarget: '20:00:00',
     },
     settings: {
       theme: 'light',

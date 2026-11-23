@@ -56,6 +56,97 @@ export function pad2(n: number): string {
   return String(Math.max(0, Math.floor(n))).padStart(2, '0')
 }
 
+export function pad3(n: number): string {
+  return String(Math.max(0, Math.floor(n))).padStart(3, '0')
+}
+
+export interface MillisecondClockParts {
+  hms: string
+  ms: string
+  full: string
+}
+
+export function formatClockWithMs(timestampMs: number, offsetMs = 0): MillisecondClockParts {
+  const adjusted = new Date(timestampMs + offsetMs)
+  const hms = `${pad2(adjusted.getHours())}:${pad2(adjusted.getMinutes())}:${pad2(adjusted.getSeconds())}`
+  const ms = pad3(adjusted.getMilliseconds())
+  return { hms, ms, full: `${hms}.${ms}` }
+}
+
+export function parseTargetClockTime(raw: string): { hours: number; minutes: number; seconds: number } | null {
+  if (typeof raw !== 'string') return null
+  const text = raw.trim()
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(text)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = match[3] !== undefined ? Number(match[3]) : 0
+  if (hours > 23 || minutes > 59 || seconds > 59) return null
+  return { hours, minutes, seconds }
+}
+
+export function getNextWholeHourTarget(nowMs = Date.now(), offsetMs = 0): string {
+  const d = new Date(nowMs + offsetMs)
+  const nextHour = (d.getHours() + 1) % 24
+  return `${pad2(nextHour)}:00:00`
+}
+
+export interface TargetCountdownInfo {
+  targetLabel: string
+  remainingMs: number
+  formatted: string
+  urgency: 'idle' | 'warn' | 'critical' | 'go'
+}
+
+export function getNextTargetCountdown(
+  nowMs: number,
+  targetTime: string,
+  offsetMs = 0,
+): TargetCountdownInfo | null {
+  const parsed = parseTargetClockTime(targetTime)
+  if (!parsed) return null
+  const adjustedNow = nowMs + offsetMs
+  const nowDate = new Date(adjustedNow)
+  const targetDate = new Date(nowDate)
+  targetDate.setHours(parsed.hours, parsed.minutes, parsed.seconds, 0)
+
+  let diffMs = targetDate.getTime() - adjustedNow
+  const targetLabel = `${pad2(parsed.hours)}:${pad2(parsed.minutes)}:${pad2(parsed.seconds)}`
+
+  // Within 2 seconds after hitting the exact mark, show GO!
+  if (diffMs <= 0 && diffMs >= -2000) {
+    return {
+      targetLabel,
+      remainingMs: 0,
+      formatted: '00:00.000',
+      urgency: 'go',
+    }
+  }
+
+  if (diffMs < -2000) {
+    targetDate.setDate(targetDate.getDate() + 1)
+    diffMs = targetDate.getTime() - adjustedNow
+  }
+
+  const totalSec = Math.floor(diffMs / 1000)
+  const ms = Math.floor(diffMs % 1000)
+  const h = Math.floor(totalSec / 3600)
+  const m = Math.floor((totalSec % 3600) / 60)
+  const s = totalSec % 60
+  const formatted =
+    h > 0 ? `${pad2(h)}:${pad2(m)}:${pad2(s)}.${pad3(ms)}` : `${pad2(m)}:${pad2(s)}.${pad3(ms)}`
+
+  const urgency: TargetCountdownInfo['urgency'] =
+    diffMs <= 3000 ? 'critical' : diffMs <= 10_000 ? 'warn' : 'idle'
+
+  return {
+    targetLabel,
+    remainingMs: diffMs,
+    formatted,
+    urgency,
+  }
+}
+
 export function parseDurationExpression(raw: string): number | null {
   if (typeof raw !== 'string') return null
   const text = raw.trim()

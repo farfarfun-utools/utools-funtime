@@ -9,10 +9,10 @@ import type {
   WidgetStyle,
   WidgetTheme,
 } from '../../lib/storage'
-import type { CountdownTimer } from '../../lib/time'
+import { getNextWholeHourTarget, type CountdownTimer } from '../../lib/time'
 import { WORLD_CITIES } from '../../lib/worldclock'
 
-defineProps<{
+const props = defineProps<{
   config: WidgetConfig
   widgetOpen: boolean
   activeTimer: CountdownTimer
@@ -24,7 +24,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'update:config': [patch: Partial<WidgetConfig>]
-  'open-widget': []
+  'open-widget': [mode?: WidgetDisplayMode]
   'close-widget': []
   'toggle-countdown': []
   'reset-countdown': []
@@ -34,10 +34,22 @@ const emit = defineEmits<{
 
 const modes: Array<{ id: WidgetDisplayMode; key: Parameters<typeof t>[1] }> = [
   { id: 'countdown', key: 'widget.modeCountdown' },
+  { id: 'msclock', key: 'widget.modeMsClock' },
   { id: 'stopwatch', key: 'widget.modeStopwatch' },
   { id: 'clock', key: 'widget.modeClock' },
   { id: 'dual', key: 'widget.modeDual' },
 ]
+
+function adjustOffset(delta: number) {
+  const next = Math.min(5000, Math.max(-5000, (props.config.msOffsetMs ?? 0) + delta))
+  emit('update:config', { msOffsetMs: next })
+}
+
+function setNextHourTarget() {
+  emit('update:config', {
+    snipeTarget: getNextWholeHourTarget(props.nowMs, props.config.msOffsetMs ?? 0),
+  })
+}
 
 function setStyle(style: WidgetStyle) {
   emit('update:config', { style })
@@ -99,6 +111,16 @@ function handleOpacity(e: Event) {
         >
           <AppIcon name="external-link" :size="14" />
           {{ t(locale, 'action.openFloat') }}
+        </button>
+
+        <button
+          type="button"
+          class="btn btn-lg"
+          data-testid="open-msclock-btn"
+          @click="emit('open-widget', 'msclock')"
+        >
+          <AppIcon name="clock" :size="14" />
+          {{ locale === 'en' ? 'Snipe Ms Clock' : '抢购毫秒悬浮窗' }}
         </button>
 
         <button
@@ -202,6 +224,57 @@ function handleOpacity(e: Event) {
             />
             <span>{{ t(locale, 'widget.alwaysOnTop') }}</span>
           </label>
+        </div>
+
+        <div v-if="config.mode === 'msclock'" class="cfg-group full snipe-panel" data-testid="msclock-snipe-panel">
+          <div class="snipe-row">
+            <span class="cfg-label">{{ locale === 'en' ? 'Target Time (Optional)' : '抢购准点提醒（可选）' }}</span>
+            <div class="snipe-controls">
+              <input
+                type="text"
+                class="input mono snipe-input"
+                :value="config.snipeTarget"
+                placeholder="20:00:00"
+                @input="emit('update:config', { snipeTarget: ($event.target as HTMLInputElement).value.trim() })"
+              />
+              <button type="button" class="btn btn-sm" @click="setNextHourTarget">
+                {{ locale === 'en' ? 'Next Hour' : '下一整点' }}
+              </button>
+              <button type="button" class="btn btn-sm mono" @click="emit('update:config', { snipeTarget: '10:00:00' })">10:00</button>
+              <button type="button" class="btn btn-sm mono" @click="emit('update:config', { snipeTarget: '20:00:00' })">20:00</button>
+              <button
+                v-if="config.snipeTarget"
+                type="button"
+                class="btn btn-sm btn-ghost"
+                @click="emit('update:config', { snipeTarget: '' })"
+              >
+                {{ locale === 'en' ? 'Clear' : '清除' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="snipe-row">
+            <span class="cfg-label">
+              {{ locale === 'en' ? 'Clock Offset (Network Latency)' : '时间偏差微调（补偿网络延迟）' }}
+            </span>
+            <div class="snipe-controls">
+              <button type="button" class="btn btn-sm mono" @click="adjustOffset(-100)">-100ms</button>
+              <button type="button" class="btn btn-sm mono" @click="adjustOffset(-50)">-50ms</button>
+              <span class="offset-readout mono">
+                {{ (config.msOffsetMs ?? 0) > 0 ? `+${config.msOffsetMs}ms` : `${config.msOffsetMs ?? 0}ms` }}
+              </span>
+              <button type="button" class="btn btn-sm mono" @click="adjustOffset(50)">+50ms</button>
+              <button type="button" class="btn btn-sm mono" @click="adjustOffset(100)">+100ms</button>
+              <button
+                v-if="config.msOffsetMs"
+                type="button"
+                class="btn btn-sm btn-ghost"
+                @click="emit('update:config', { msOffsetMs: 0 })"
+              >
+                0ms
+              </button>
+            </div>
+          </div>
         </div>
 
         <div v-if="config.mode === 'dual'" class="cfg-group full dual-selects">
@@ -385,6 +458,44 @@ function handleOpacity(e: Event) {
 .dual-vs {
   color: var(--text-muted);
   font-weight: 700;
+}
+
+.snipe-panel {
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  gap: 8px;
+}
+
+.snipe-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.snipe-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.snipe-input {
+  width: 88px;
+  height: 26px;
+  padding: 0 7px;
+  font-size: 12px;
+}
+
+.offset-readout {
+  min-width: 54px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .sync-note {

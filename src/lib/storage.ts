@@ -6,7 +6,7 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 export type Locale = 'zh-CN' | 'en'
 export type WidgetStyle = 'standard' | 'compact'
 export type WidgetTheme = 'dark' | 'light'
-export type WidgetDisplayMode = 'countdown' | 'stopwatch' | 'clock' | 'dual'
+export type WidgetDisplayMode = 'countdown' | 'stopwatch' | 'clock' | 'msclock' | 'dual'
 
 export interface WidgetConfig {
   style: WidgetStyle
@@ -16,6 +16,8 @@ export interface WidgetConfig {
   alwaysOnTop: boolean
   dualZoneA: string
   dualZoneB: string
+  msOffsetMs: number
+  snipeTarget: string
 }
 
 export interface StopwatchState {
@@ -98,6 +100,8 @@ export function createDefaultState(): StudioState {
       alwaysOnTop: true,
       dualZoneA: 'Asia/Shanghai',
       dualZoneB: 'America/New_York',
+      msOffsetMs: 0,
+      snipeTarget: '',
     },
     settings: {
       theme: 'system',
@@ -152,7 +156,7 @@ function writeRaw(state: StudioState): void {
 
 const VALID_VIEWS = new Set<ViewId>(['countdown', 'stopwatch', 'worldclock', 'widget', 'calc'])
 const VALID_THEMES = new Set<ThemeMode>(['system', 'light', 'dark'])
-const VALID_WIDGET_MODES = new Set<WidgetDisplayMode>(['countdown', 'stopwatch', 'clock', 'dual'])
+const VALID_WIDGET_MODES = new Set<WidgetDisplayMode>(['countdown', 'stopwatch', 'clock', 'msclock', 'dual'])
 
 export function loadStudioState(): StudioState {
   const fallback = createDefaultState()
@@ -210,6 +214,8 @@ export function loadStudioState(): StudioState {
       alwaysOnTop: widgetRaw.alwaysOnTop !== false,
       dualZoneA: isValidTimeZone(String(widgetRaw.dualZoneA ?? '')) ? String(widgetRaw.dualZoneA) : 'Asia/Shanghai',
       dualZoneB: isValidTimeZone(String(widgetRaw.dualZoneB ?? '')) ? String(widgetRaw.dualZoneB) : 'America/New_York',
+      msOffsetMs: Math.min(5000, Math.max(-5000, Math.round(Number(widgetRaw.msOffsetMs) || 0))),
+      snipeTarget: typeof widgetRaw.snipeTarget === 'string' ? widgetRaw.snipeTarget.slice(0, 8) : '',
     },
     settings: {
       theme: VALID_THEMES.has(settingsRaw.theme as ThemeMode) ? (settingsRaw.theme as ThemeMode) : 'system',
