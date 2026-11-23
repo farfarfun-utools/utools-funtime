@@ -1,0 +1,49 @@
+#!/bin/sh
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$ROOT_DIR"
+
+command -v node >/dev/null || { echo "error: Node.js is required" >&2; exit 1; }
+command -v pnpm >/dev/null || { echo "error: pnpm is required (corepack enable)" >&2; exit 1; }
+
+node -e '
+const want = (require("./package.json").engines || {}).node || "";
+const match = /^>=\s*(\d+)\.(\d+)\.(\d+)$/.exec(want.trim());
+if (!match) {
+  console.error(`error: package.json#engines.node must match >=x.y.z, got "${want}"`);
+  process.exit(2);
+}
+const need = match.slice(1).map(Number);
+const have = process.versions.node.split(".").map(Number);
+const diff = need.map((n, i) => have[i] - n).find((d) => d !== 0) || 0;
+if (diff < 0) {
+  console.error(`error: Node ${want} is required, found ${process.versions.node}`);
+  process.exit(1);
+}
+'
+
+pnpm install --frozen-lockfile
+
+if [ "${SKIP_CHECKS:-0}" = "1" ]; then
+  echo "SKIP_CHECKS=1: skipping lint / typecheck / test"
+else
+  pnpm lint
+  pnpm typecheck
+  pnpm test
+fi
+
+node --check utools/preload.js
+pnpm build
+
+node -e '
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const plugin = JSON.parse(fs.readFileSync("utools/plugin.json", "utf8"));
+if (plugin.version !== pkg.version) throw new Error(`Version mismatch: ${pkg.version} vs ${plugin.version}`);
+for (const file of [plugin.main, plugin.logo, plugin.preload]) {
+  if (!fs.existsSync("utools/" + file)) throw new Error("Missing utools/" + file);
+}
+'
+test ! -e utools/.git || { echo "error: utools/ 内不应存在 .git" >&2; exit 1; }
+echo "uTools plugin ready: utools/plugin.json"

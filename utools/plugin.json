@@ -1,0 +1,163 @@
+{
+  "pluginName": "分秒必争",
+  "version": "0.1.0",
+  "description": "分秒必争 FunTime：离线精密计时与世界时钟工作台，支持多任务倒计时、番茄专注钟、毫秒级秒表记次、世界时钟与跨时区会议滑块、桌面置顶悬浮小窗及时间推算",
+  "author": "farfarfun",
+  "main": "dist/index.html",
+  "preload": "preload.js",
+  "logo": "logo.png",
+  "pluginSetting": {
+    "single": true,
+    "height": 720
+  },
+  "platform": [
+    "darwin",
+    "win32",
+    "linux"
+  ],
+  "features": [
+    {
+      "code": "funtime",
+      "explain": "打开分秒必争计时与世界时钟工作台",
+      "cmds": [
+        "分秒必争",
+        "FunTime",
+        "倒计时",
+        "计时器",
+        "世界时钟"
+      ]
+    },
+    {
+      "code": "time-stopwatch",
+      "explain": "启动精密秒表与记次统计",
+      "cmds": [
+        "秒表",
+        "正计时",
+        "stopwatch"
+      ]
+    },
+    {
+      "code": "time-pomodoro",
+      "explain": "打开番茄专注钟（25m / 5m / 15m）",
+      "cmds": [
+        "番茄钟",
+        "专注计时",
+        "pomodoro"
+      ]
+    },
+    {
+      "code": "time-float",
+      "explain": "打开或配置桌面置顶悬浮小窗",
+      "cmds": [
+        "悬浮时钟",
+        "桌面悬浮",
+        "小窗计时"
+      ]
+    },
+    {
+      "code": "time-quick",
+      "explain": "解析自然时长表达式并立即开始倒计时",
+      "cmds": [
+        {
+          "type": "regex",
+          "label": "快速开启倒计时",
+          "match": "/^\\s*(\\d+(?:\\.\\d+)?\\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|秒|分|分钟|小时|时)|\\d{1,2}:\\d{2}(?::\\d{2})?)\\s*$/i",
+          "minLength": 2,
+          "maxLength": 24
+        }
+      ]
+    }
+  ],
+  "tools": {
+    "world_clock_now": {
+      "description": "离线获取一个或多个 IANA 时区或城市的当前本地时间、日期、UTC 偏移及昼夜状态。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timezones": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "IANA 时区或常见城市名列表，例如 [\"Asia/Shanghai\", \"America/New_York\", \"London\", \"Tokyo\"]；省略时返回常用枢纽时区。"
+          }
+        }
+      }
+    },
+    "convert_timezone": {
+      "description": "离线在源时区与目标 IANA 时区之间转换指定日期时间，自动处理夏令时与跨日偏移。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "待转换的日期时间字符串，例如 2026-06-15 14:30、2026-06-15T14:30:00 或带偏移的 ISO 字符串"
+          },
+          "from": {
+            "type": "string",
+            "description": "源 IANA 时区或城市名，例如 Asia/Shanghai、Beijing 或 UTC"
+          },
+          "to": {
+            "type": "string",
+            "description": "目标 IANA 时区或城市名，例如 America/Los_Angeles、New York 或 Europe/London"
+          }
+        },
+        "required": [
+          "datetime",
+          "from",
+          "to"
+        ]
+      }
+    },
+    "calculate_time_diff": {
+      "description": "离线计算两个时间戳/日期之间的精确间隔（天/时/分/秒），或在基准时间上加减偏移量得到目标时间与 Unix 时间戳。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "起始日期时间或 Unix 时间戳（计算间隔模式时与 end 配合使用）"
+          },
+          "end": {
+            "type": "string",
+            "description": "结束日期时间或 Unix 时间戳（计算间隔模式时与 start 配合使用）"
+          },
+          "base": {
+            "type": "string",
+            "description": "基准日期时间（推算偏移模式时使用，省略且提供 offset 时默认当前时间）"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "add",
+              "subtract"
+            ],
+            "description": "偏移方向：add（默认）或 subtract"
+          },
+          "offset": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "days": {
+                "type": "number"
+              },
+              "hours": {
+                "type": "number"
+              },
+              "minutes": {
+                "type": "number"
+              },
+              "seconds": {
+                "type": "number"
+              }
+            },
+            "description": "待加减的时间偏移量"
+          }
+        }
+      }
+    }
+  }
+}

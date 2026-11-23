@@ -1,0 +1,7 @@
+node_modules/
+utools/dist/
+release/
+coverage/
+.screenshot-tools/
+.DS_Store
+*.log

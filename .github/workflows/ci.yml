@@ -1,0 +1,75 @@
+name: CI
+on:
+  push:
+    branches: [master]
+    paths-ignore: ['docs/**', '*.md']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - name: Check and build
+        run: sh build.sh
+      - uses: actions/upload-artifact@v4
+        if: matrix.node == '22'
+        with:
+          name: utools-funcolor
+          path: |
+            utools/dist
+            utools/plugin.json
+            utools/preload.js
+            utools/logo.png
+          if-no-files-found: error
+      - name: Check packaging identity
+        if: matrix.node == '22' && github.event_name != 'pull_request'
+        id: package
+        env:
+          UTOOLS_MID: ${{ secrets.UTOOLS_MID }}
+          UTOOLS_UID: ${{ secrets.UTOOLS_UID }}
+          UTOOLS_CELLPHONE: ${{ secrets.UTOOLS_CELLPHONE }}
+        run: |
+          node - <<'JS'
+          const fs = require('node:fs')
+          const identity = JSON.parse(fs.readFileSync('identity.json', 'utf8'))
+          if (identity.pluginId && ['UTOOLS_MID', 'UTOOLS_UID', 'UTOOLS_CELLPHONE'].every(key => process.env[key])) {
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'enabled=true\n')
+          } else {
+            console.log('::notice::UPXS packaging awaits official plugin ID and organization secrets.')
+          }
+          JS
+      - name: Package UPXS with organization secrets
+        if: steps.package.outputs.enabled == 'true'
+        uses: farfarfun-action/utools-devtools@c48e8ce06b6700d21c73917b3b16d6e5674c13ef # v0.1.4
+        with:
+          source: utools
+          output: release/utools-funcolor.upxs
+          identity-file: identity.json
+          mid: ${{ secrets.UTOOLS_MID }}
+          uid: ${{ secrets.UTOOLS_UID }}
+          cellphone: ${{ secrets.UTOOLS_CELLPHONE }}
+      - name: Checksum UPXS
+        if: steps.package.outputs.enabled == 'true'
+        run: cd release && sha256sum utools-funcolor.upxs > SHA256SUMS
+      - name: Upload UPXS installation preview
+        if: steps.package.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: utools-funcolor-upxs
+          path: release/
+          if-no-files-found: error
