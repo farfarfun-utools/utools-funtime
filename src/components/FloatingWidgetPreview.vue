@@ -11,7 +11,13 @@ import {
   getTimerRemainingMs,
   type CountdownTimer,
 } from '../lib/time'
-import { getCityClockSnapshot, getLocalTimeZone, getZonedDateParts } from '../lib/worldclock'
+import {
+  formatUtcOffset,
+  getCityClockSnapshot,
+  getLocalTimeZone,
+  getUtcOffsetMinutes,
+  getZonedDateParts,
+} from '../lib/worldclock'
 
 const props = withDefaults(
   defineProps<{
@@ -41,7 +47,9 @@ const countdownProgress = computed(() => getTimerProgress(props.activeTimer, pro
 const countdownText = computed(() => formatCountdown(countdownRemainingMs.value))
 const stopwatchText = computed(() => formatStopwatch(props.stopwatchElapsedMs))
 
-const localParts = computed(() => getZonedDateParts(nowDate.value, getLocalTimeZone(), props.locale))
+const localTz = getLocalTimeZone()
+const localParts = computed(() => getZonedDateParts(nowDate.value, localTz, props.locale))
+const localUtcOffset = computed(() => formatUtcOffset(getUtcOffsetMinutes(nowDate.value, localTz)))
 const msClock = computed(() => formatClockWithMs(props.nowMs, props.config.msOffsetMs ?? 0))
 const snipeInfo = computed(() =>
   props.config.snipeTarget
@@ -276,14 +284,14 @@ function cycleMode() {
               </span>
             </div>
             <div v-else class="ms-sub mono">
-              {{ localParts.dateStr }} {{ localParts.weekday }} · {{ dualA.utcOffsetStr }}
+              {{ localParts.dateStr }} {{ localParts.weekday }} · {{ localUtcOffset }}
             </div>
           </div>
         </template>
 
         <template v-else-if="config.mode === 'clock'">
           <div class="big-readout mono">{{ localParts.timeStr }}</div>
-          <span class="tz-badge mono">{{ dualA.utcOffsetStr }}</span>
+          <span class="tz-badge mono">{{ localUtcOffset }}</span>
         </template>
 
         <template v-else>

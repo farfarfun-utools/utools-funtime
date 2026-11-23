@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import FloatingWidgetPreview from './components/FloatingWidgetPreview.vue'
 import { createDefaultState, type WidgetDisplayMode } from './lib/storage'
 import { createSyncBridge, readLiveSnapshot, type WidgetLiveSnapshot } from './lib/sync'
-import { getTimerRemainingMs } from './lib/time'
+import { claimSnipeChimeKey, getSnipeHitKey, getTimerRemainingMs, playChime } from './lib/time'
 
 function initialSnapshot(): WidgetLiveSnapshot {
   const saved = readLiveSnapshot()
@@ -39,6 +39,9 @@ const stopwatchElapsedMs = computed(() => {
 function applySnapshot(next: WidgetLiveSnapshot) {
   snapshot.updatedAt = next.updatedAt
   snapshot.locale = next.locale
+  if (next.soundEnabled !== undefined) {
+    snapshot.soundEnabled = next.soundEnabled
+  }
   Object.assign(snapshot.widget, next.widget)
   Object.assign(snapshot.activeTimer, next.activeTimer)
   Object.assign(snapshot.stopwatch, next.stopwatch)
@@ -101,9 +104,20 @@ function handleClose() {
   window.close()
 }
 
+function checkWidgetSnipeChime(now: number) {
+  if (snapshot.widget.mode !== 'msclock' || !snapshot.widget.snipeTarget) return
+  const hitKey = getSnipeHitKey(now, snapshot.widget.snipeTarget, snapshot.widget.msOffsetMs ?? 0)
+  if (!hitKey) return
+  if (claimSnipeChimeKey(hitKey) && snapshot.soundEnabled !== false) {
+    playChime('snipe')
+  }
+}
+
 function startTickLoop() {
   const step = () => {
-    nowMs.value = Date.now()
+    const now = Date.now()
+    nowMs.value = now
+    checkWidgetSnipeChime(now)
     rafHandle = window.requestAnimationFrame(step)
   }
   if (typeof window.requestAnimationFrame === 'function') {
@@ -111,7 +125,9 @@ function startTickLoop() {
   }
   // Keep clock updating smoothly even when window is unfocused/backgrounded
   fallbackTimer = window.setInterval(() => {
-    nowMs.value = Date.now()
+    const now = Date.now()
+    nowMs.value = now
+    checkWidgetSnipeChime(now)
   }, 16)
 }
 

@@ -7,6 +7,7 @@ export const LIVE_SNAPSHOT_KEY = 'funtime_widget_live_v1'
 export interface WidgetLiveSnapshot {
   updatedAt: number
   locale: Locale
+  soundEnabled?: boolean
   widget: WidgetConfig
   activeTimer: CountdownTimer
   stopwatch: {

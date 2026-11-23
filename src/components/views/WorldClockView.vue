@@ -7,6 +7,8 @@ import {
   buildMeetingPlannerRows,
   formatMeetingScheduleText,
   getCityClockSnapshot,
+  getLocalTimeZone,
+  resolveTimeZone,
   WORLD_CITIES,
 } from '../../lib/worldclock'
 import { pad2 } from '../../lib/time'
@@ -24,8 +26,10 @@ const emit = defineEmits<{
 }>()
 
 const searchQuery = ref('')
+const searchHint = ref('')
 const sliderMinutes = ref(10 * 60) // 10:00 reference meeting slot
 const refZone = ref(props.pinnedZones[0] || 'Asia/Shanghai')
+const localTz = getLocalTimeZone()
 
 const nowDate = computed(() => new Date(props.nowMs))
 
@@ -34,13 +38,16 @@ const effectiveRefZone = computed(() =>
 )
 
 const citySnapshots = computed(() =>
-  props.pinnedZones.map((tz) => getCityClockSnapshot(tz, nowDate.value, props.locale)),
+  props.pinnedZones.map((tz) => ({
+    ...getCityClockSnapshot(tz, nowDate.value, props.locale),
+    isLocal: tz.toLowerCase() === localTz.toLowerCase(),
+  })),
 )
 
 const searchResults = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return []
-  return WORLD_CITIES.filter(
+  const matches = WORLD_CITIES.filter(
     (c) =>
       !props.pinnedZones.includes(c.timeZone) &&
       (c.nameZh.toLowerCase().includes(q) ||
@@ -49,6 +56,25 @@ const searchResults = computed(() => {
         c.regionZh.toLowerCase().includes(q) ||
         c.aliases.some((a) => a.toLowerCase().includes(q))),
   ).slice(0, 6)
+  if (matches.length > 0) return matches
+  const resolved = resolveTimeZone(searchQuery.value)
+  if (resolved && !props.pinnedZones.includes(resolved.timeZone)) {
+    const short = resolved.timeZone.includes('/')
+      ? resolved.timeZone.split('/').pop()!.replace(/_/g, ' ')
+      : resolved.timeZone
+    return [
+      resolved.city ?? {
+        timeZone: resolved.timeZone,
+        nameZh: short,
+        nameEn: short,
+        regionZh: 'IANA',
+        regionEn: 'IANA',
+        code: 'TZ',
+        aliases: [],
+      },
+    ]
+  }
+  return []
 })
 
 const plannerRows = computed(() =>
@@ -68,8 +94,33 @@ const sliderLabel = computed(() => {
 })
 
 function handleSelectCity(tz: string) {
+  if (props.pinnedZones.includes(tz)) {
+    searchHint.value = props.locale === 'en' ? 'Timezone already pinned' : '该时区已在看板中'
+    return
+  }
   emit('add-zone', tz)
   searchQuery.value = ''
+  searchHint.value = ''
+}
+
+function clearSearch() {
+  searchQuery.value = ''
+  searchHint.value = ''
+}
+
+function handleSearchEnter() {
+  const q = searchQuery.value.trim()
+  if (!q) return
+  if (searchResults.value.length > 0) {
+    handleSelectCity(searchResults.value[0].timeZone)
+    return
+  }
+  const resolved = resolveTimeZone(q)
+  if (resolved && props.pinnedZones.includes(resolved.timeZone)) {
+    searchHint.value = props.locale === 'en' ? 'Timezone already pinned' : '该时区已在看板中'
+  } else {
+    searchHint.value = props.locale === 'en' ? 'No matching city or IANA timezone' : '未匹配到城市或 IANA 时区'
+  }
 }
 
 function handleCopySchedule() {
@@ -90,11 +141,23 @@ function handleCopySchedule() {
           class="input search-input"
           data-testid="world-search-input"
           :placeholder="t(locale, 'world.searchPlaceholder')"
+          @input="searchHint = ''"
+          @keydown.enter.prevent="handleSearchEnter"
+          @keydown.escape="clearSearch"
         />
-        <button v-if="searchQuery" type="button" class="clear-btn" @click="searchQuery = ''">
+        <button
+          v-if="searchQuery"
+          type="button"
+          class="clear-btn"
+          data-testid="world-search-clear"
+          :aria-label="locale === 'en' ? 'Clear search' : '清空搜索'"
+          :title="locale === 'en' ? 'Clear' : '清空'"
+          @click="clearSearch"
+        >
           <AppIcon name="x" :size="13" />
         </button>
       </div>
+      <div v-if="searchHint" class="search-hint">{{ searchHint }}</div>
 
       <div v-if="searchResults.length > 0" class="search-dropdown card">
         <button
@@ -119,6 +182,7 @@ function handleCopySchedule() {
         v-for="snap in citySnapshots"
         :key="snap.timeZone"
         class="card clock-card"
+        :class="{ 'is-local': snap.isLocal }"
       >
         <div class="clock-head">
           <div class="city-info">
@@ -126,7 +190,12 @@ function handleCopySchedule() {
               {{ snap.parts.isDaytime ? '☀️' : '🌙' }}
             </span>
             <div class="city-titles">
-              <div class="city-name">{{ locale === 'en' ? snap.nameEn : snap.nameZh }}</div>
+              <div class="city-name-row">
+                <span class="city-name">{{ locale === 'en' ? snap.nameEn : snap.nameZh }}</span>
+                <span v-if="snap.isLocal" class="local-tag">
+                  {{ locale === 'en' ? 'Local' : '本地' }}
+                </span>
+              </div>
               <div class="city-zone mono">{{ snap.utcOffsetStr }}</div>
             </div>
           </div>
@@ -290,13 +359,26 @@ function handleCopySchedule() {
 
 .clear-btn {
   position: absolute;
-  right: 8px;
+  right: 6px;
   color: var(--text-muted);
   width: 20px;
   height: 20px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition: background 0.14s, color 0.14s;
+}
+
+.clear-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.search-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--warn-text);
 }
 
 .search-dropdown {
@@ -350,6 +432,28 @@ function handleCopySchedule() {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.clock-card.is-local {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-soft), var(--shadow-sm);
+}
+
+.city-name-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.local-tag {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  flex-shrink: 0;
 }
 
 .clock-head {

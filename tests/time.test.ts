@@ -1,16 +1,19 @@
 import { describe, expect, it, beforeEach } from 'vitest'
 import {
+  claimSnipeChimeKey,
   computeLapStats,
   formatClockWithMs,
   formatCountdown,
   formatDurationLabel,
   formatStopwatch,
   getNextTargetCountdown,
+  getSnipeHitKey,
   getTimerProgress,
   getTimerRemainingMs,
   lapsToCsv,
   parseDurationExpression,
   parseTargetClockTime,
+  resetSnipeChimeTracker,
   type CountdownTimer,
 } from '../src/lib/time'
 import {
@@ -121,6 +124,15 @@ describe('time utilities', () => {
     const go = getNextTargetCountdown(new Date(2026, 10, 23, 20, 0, 0, 500).getTime(), '20:00:00', 0)
     expect(go?.urgency).toBe('go')
     expect(go?.remainingMs).toBe(0)
+
+    // Snipe chime deduplication: only claims once per target hit window
+    resetSnipeChimeTracker()
+    expect(getSnipeHitKey(base, '20:00:00', 0)).toBeNull()
+    const hitKey = getSnipeHitKey(new Date(2026, 10, 23, 20, 0, 0, 250).getTime(), '20:00:00', 0)
+    expect(hitKey).toBe('2026-11-23|20:00:00')
+    expect(claimSnipeChimeKey(hitKey!)).toBe(true)
+    expect(claimSnipeChimeKey(hitKey!)).toBe(false)
+    expect(claimSnipeChimeKey('2026-11-23|21:00:00')).toBe(true)
   })
 })
 

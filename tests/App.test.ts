@@ -80,4 +80,35 @@ describe('FunTime App and WidgetApp UI', () => {
 
     wrapper.unmount()
   })
+
+  it('validates empty/invalid countdown expressions, supports inline timer rename, and prevents duplicate world clock pins', async () => {
+    const wrapper = mount(App)
+
+    // Empty & invalid natural input shows inline error hint
+    await wrapper.find('form.quick-form').trigger('submit')
+    expect(wrapper.find('.input-err').exists()).toBe(true)
+    await wrapper.find('[data-testid="quick-expr-input"]').setValue('not-valid')
+    await wrapper.find('form.quick-form').trigger('submit')
+    expect(wrapper.find('.input-err').text()).toContain('not-valid')
+
+    // Inline timer rename
+    await wrapper.find('[data-testid="timer-label-btn"]').trigger('click')
+    const labelInput = wrapper.find('[data-testid="timer-label-input"]')
+    await labelInput.setValue('深度编码')
+    await labelInput.trigger('keydown.enter')
+    expect(wrapper.find('[data-testid="timer-label-btn"]').text()).toBe('深度编码')
+
+    // World clock: prevents duplicate pin and clears search
+    await wrapper.find('[data-testid="nav-worldclock"]').trigger('click')
+    const initialCards = wrapper.findAll('.clock-card').length
+    const search = wrapper.find('[data-testid="world-search-input"]')
+    await search.setValue('Tokyo')
+    await search.trigger('keydown.enter')
+    expect(wrapper.findAll('.clock-card').length).toBe(initialCards)
+    expect(wrapper.find('.search-hint').exists()).toBe(true)
+    await wrapper.find('[data-testid="world-search-clear"]').trigger('click')
+    expect((search.element as HTMLInputElement).value).toBe('')
+
+    wrapper.unmount()
+  })
 })

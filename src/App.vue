@@ -18,8 +18,10 @@ import {
 } from './lib/storage'
 import { createSyncBridge, type WidgetLiveSnapshot } from './lib/sync'
 import {
+  claimSnipeChimeKey,
   formatCountdown,
   formatDurationLabel,
+  getSnipeHitKey,
   getTimerRemainingMs,
   parseDurationExpression,
   playChime,
@@ -97,6 +99,7 @@ function buildSnapshot(): WidgetLiveSnapshot {
   return {
     updatedAt: Date.now(),
     locale: state.settings.locale,
+    soundEnabled: state.settings.soundEnabled,
     widget: { ...state.widget },
     activeTimer: { ...timer },
     stopwatch: {
@@ -174,10 +177,27 @@ function checkTimerCompletions(now: number) {
   }
 }
 
+function checkSnipeTargetHit(now: number) {
+  if (state.widget.mode !== 'msclock' || !state.widget.snipeTarget) return
+  const hitKey = getSnipeHitKey(now, state.widget.snipeTarget, state.widget.msOffsetMs ?? 0)
+  if (!hitKey) return
+  if (!claimSnipeChimeKey(hitKey)) return
+  if (state.settings.soundEnabled) {
+    playChime('snipe')
+  }
+  const targetLabel = hitKey.split('|')[1] ?? state.widget.snipeTarget
+  showToast(
+    state.settings.locale === 'en'
+      ? `⚡ Target reached: ${targetLabel} · GO!`
+      : `⚡ 准点已到：${targetLabel} · GO!`,
+  )
+}
+
 function handleTick() {
   const now = Date.now()
   nowMs.value = now
   checkTimerCompletions(now)
+  checkSnipeTargetHit(now)
   if (window.funtime?.isWidgetOpen) {
     widgetOpen.value = window.funtime.isWidgetOpen()
   } else if (popupWindow && popupWindow.closed) {
@@ -236,6 +256,15 @@ function deleteTimer(id: string) {
     state.activeTimerId = state.timers[0].id
   }
   persist()
+}
+
+function renameTimer(payload: { id: string; label: string }) {
+  const timer = state.timers.find((item) => item.id === payload.id)
+  const clean = payload.label.trim().slice(0, 36)
+  if (!timer || !clean) return
+  timer.label = clean
+  persist()
+  showToast(state.settings.locale === 'en' ? `Renamed to "${clean}"` : `已重命名为「${clean}」`)
 }
 
 function createTimer(payload: { label: string; durationMs: number; kind: TimerKind; autoStart: boolean }) {
@@ -670,6 +699,7 @@ onBeforeUnmount(() => {
           @reset-timer="resetTimer"
           @add-minute="addMinute"
           @delete-timer="deleteTimer"
+          @rename-timer="renameTimer"
           @create-timer="createTimer"
           @apply-pomodoro="applyPomodoro"
           @open-float="openFloatingWidget('countdown')"

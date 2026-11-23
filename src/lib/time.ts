@@ -147,6 +147,50 @@ export function getNextTargetCountdown(
   }
 }
 
+export function getSnipeHitKey(
+  nowMs: number,
+  targetTime: string,
+  offsetMs = 0,
+): string | null {
+  const info = getNextTargetCountdown(nowMs, targetTime, offsetMs)
+  if (!info || info.urgency !== 'go') return null
+  const adjusted = new Date(nowMs + offsetMs)
+  const datePart = `${adjusted.getFullYear()}-${pad2(adjusted.getMonth() + 1)}-${pad2(adjusted.getDate())}`
+  return `${datePart}|${info.targetLabel}`
+}
+
+const SNIPE_CHIME_KEY = 'funtime_last_snipe_chime_v1'
+let lastSnipeKeyInMemory = ''
+
+export function resetSnipeChimeTracker(): void {
+  lastSnipeKeyInMemory = ''
+  try {
+    const ls = typeof window !== 'undefined' ? window.localStorage : globalThis.localStorage
+    ls?.removeItem(SNIPE_CHIME_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+export function claimSnipeChimeKey(hitKey: string): boolean {
+  if (!hitKey) return false
+  if (lastSnipeKeyInMemory === hitKey) return false
+  try {
+    const ls = typeof window !== 'undefined' ? window.localStorage : globalThis.localStorage
+    if (ls && typeof ls.getItem === 'function' && typeof ls.setItem === 'function') {
+      if (ls.getItem(SNIPE_CHIME_KEY) === hitKey) {
+        lastSnipeKeyInMemory = hitKey
+        return false
+      }
+      ls.setItem(SNIPE_CHIME_KEY, hitKey)
+    }
+  } catch {
+    // fallback to in-memory dedup
+  }
+  lastSnipeKeyInMemory = hitKey
+  return true
+}
+
 export function parseDurationExpression(raw: string): number | null {
   if (typeof raw !== 'string') return null
   const text = raw.trim()
@@ -290,7 +334,7 @@ export function lapsToCsv(laps: StopwatchLap[]): string {
   return [header, ...rows].join('\n')
 }
 
-export function playChime(kind: 'complete' | 'tick' = 'complete'): void {
+export function playChime(kind: 'complete' | 'tick' | 'snipe' = 'complete'): void {
   if (typeof window === 'undefined') return
   const AudioCtx =
     window.AudioContext ||
@@ -299,19 +343,26 @@ export function playChime(kind: 'complete' | 'tick' = 'complete'): void {
   try {
     const ctx = new AudioCtx()
     const now = ctx.currentTime
-    const notes = kind === 'complete' ? [523.25, 659.25, 783.99, 1046.5] : [880]
+    const notes =
+      kind === 'complete'
+        ? [523.25, 659.25, 783.99, 1046.5]
+        : kind === 'snipe'
+          ? [1046.5, 1567.98]
+          : [880]
+    const step = kind === 'snipe' ? 0.08 : 0.13
+    const sustain = kind === 'complete' ? 0.42 : kind === 'snipe' ? 0.18 : 0.1
     notes.forEach((freq, idx) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.setValueAtTime(freq, now + idx * 0.13)
-      gain.gain.setValueAtTime(0.0001, now + idx * 0.13)
-      gain.gain.exponentialRampToValueAtTime(0.14, now + idx * 0.13 + 0.02)
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.13 + (kind === 'complete' ? 0.42 : 0.1))
+      osc.type = kind === 'snipe' ? 'triangle' : 'sine'
+      osc.frequency.setValueAtTime(freq, now + idx * step)
+      gain.gain.setValueAtTime(0.0001, now + idx * step)
+      gain.gain.exponentialRampToValueAtTime(kind === 'snipe' ? 0.18 : 0.14, now + idx * step + 0.012)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * step + sustain)
       osc.connect(gain)
       gain.connect(ctx.destination)
-      osc.start(now + idx * 0.13)
-      osc.stop(now + idx * 0.13 + (kind === 'complete' ? 0.45 : 0.12))
+      osc.start(now + idx * step)
+      osc.stop(now + idx * step + sustain + 0.03)
     })
     window.setTimeout(() => {
       void ctx.close().catch(() => {})

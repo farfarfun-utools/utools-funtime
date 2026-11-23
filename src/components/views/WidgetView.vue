@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppIcon from '../AppIcon.vue'
 import FloatingWidgetPreview from '../FloatingWidgetPreview.vue'
 import { t } from '../../lib/i18n'
@@ -9,7 +10,7 @@ import type {
   WidgetStyle,
   WidgetTheme,
 } from '../../lib/storage'
-import { getNextWholeHourTarget, type CountdownTimer } from '../../lib/time'
+import { getNextWholeHourTarget, parseTargetClockTime, type CountdownTimer } from '../../lib/time'
 import { WORLD_CITIES } from '../../lib/worldclock'
 
 const props = defineProps<{
@@ -39,6 +40,10 @@ const modes: Array<{ id: WidgetDisplayMode; key: Parameters<typeof t>[1] }> = [
   { id: 'clock', key: 'widget.modeClock' },
   { id: 'dual', key: 'widget.modeDual' },
 ]
+
+const snipeTargetInvalid = computed(
+  () => Boolean(props.config.snipeTarget.trim()) && !parseTargetClockTime(props.config.snipeTarget),
+)
 
 function adjustOffset(delta: number) {
   const next = Math.min(5000, Math.max(-5000, (props.config.msOffsetMs ?? 0) + delta))
@@ -105,7 +110,7 @@ function handleOpacity(e: Event) {
       <div class="stage-cta-row">
         <button
           type="button"
-          class="btn btn-lg btn-primary"
+          class="btn btn-primary"
           data-testid="open-widget-btn"
           @click="emit('open-widget')"
         >
@@ -115,7 +120,7 @@ function handleOpacity(e: Event) {
 
         <button
           type="button"
-          class="btn btn-lg"
+          class="btn"
           data-testid="open-msclock-btn"
           @click="emit('open-widget', 'msclock')"
         >
@@ -125,7 +130,7 @@ function handleOpacity(e: Event) {
 
         <button
           type="button"
-          class="btn btn-lg"
+          class="btn"
           data-testid="close-widget-btn"
           @click="emit('close-widget')"
         >
@@ -233,8 +238,10 @@ function handleOpacity(e: Event) {
               <input
                 type="text"
                 class="input mono snipe-input"
+                :class="{ 'is-error': snipeTargetInvalid }"
                 :value="config.snipeTarget"
                 placeholder="20:00:00"
+                :title="snipeTargetInvalid ? (locale === 'en' ? 'Use HH:MM:SS (00:00:00–23:59:59)' : '请输入 HH:MM:SS（00:00:00–23:59:59）') : ''"
                 @input="emit('update:config', { snipeTarget: ($event.target as HTMLInputElement).value.trim() })"
               />
               <button type="button" class="btn btn-sm" @click="setNextHourTarget">
@@ -315,16 +322,16 @@ function handleOpacity(e: Event) {
 .widget-layout {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   height: 100%;
   min-height: 0;
 }
 
 .preview-stage {
-  padding: 13px 15px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
   flex-shrink: 0;
 }
 
@@ -348,8 +355,8 @@ function handleOpacity(e: Event) {
 
 .desktop-canvas {
   position: relative;
-  height: 178px;
-  border-radius: 12px;
+  height: 148px;
+  border-radius: 11px;
   background: radial-gradient(circle at 20% 20%, rgba(20, 184, 166, 0.22), transparent 55%),
     radial-gradient(circle at 80% 80%, rgba(15, 118, 110, 0.24), transparent 55%),
     linear-gradient(135deg, #0f172a 0%, #13252c 50%, #1e293b 100%);
@@ -372,30 +379,30 @@ function handleOpacity(e: Event) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .config-card {
   flex: 1;
   min-height: 0;
-  padding: 13px 15px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   overflow-y: auto;
 }
 
 .config-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 16px;
+  gap: 8px 14px;
 }
 
 .cfg-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .cfg-group .seg-group {
@@ -461,11 +468,11 @@ function handleOpacity(e: Event) {
 }
 
 .snipe-panel {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 9px;
   border: 1px solid var(--border);
   background: var(--bg-subtle);
-  gap: 8px;
+  gap: 6px;
 }
 
 .snipe-row {
@@ -490,6 +497,11 @@ function handleOpacity(e: Event) {
   font-size: 12px;
 }
 
+.snipe-input.is-error {
+  border-color: var(--err-text);
+  box-shadow: 0 0 0 2px var(--err-bg);
+}
+
 .offset-readout {
   min-width: 54px;
   text-align: center;
@@ -500,9 +512,10 @@ function handleOpacity(e: Event) {
 
 .sync-note {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--text-muted);
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
 }
 

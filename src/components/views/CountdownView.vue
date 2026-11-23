@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import AppIcon from '../AppIcon.vue'
 import { t } from '../../lib/i18n'
 import type { Locale } from '../../lib/storage'
@@ -29,6 +29,7 @@ const emit = defineEmits<{
   'reset-timer': [id: string]
   'add-minute': [id: string]
   'delete-timer': [id: string]
+  'rename-timer': [payload: { id: string; label: string }]
   'create-timer': [payload: { label: string; durationMs: number; kind: TimerKind; autoStart: boolean }]
   'apply-pomodoro': [payload: { kind: TimerKind; durationMs: number; label: string }]
   'open-float': []
@@ -37,6 +38,9 @@ const emit = defineEmits<{
 const customExpr = ref('')
 const customLabel = ref('')
 const inputError = ref('')
+const editingLabel = ref(false)
+const labelDraft = ref('')
+const labelInputRef = ref<HTMLInputElement | null>(null)
 
 const activeTimer = computed(
   () => props.timers.find((item) => item.id === props.activeTimerId) ?? props.timers[0],
@@ -57,13 +61,50 @@ const statusLabel = computed(() => {
   return t(props.locale, 'countdown.ready')
 })
 
+watch(
+  () => props.activeTimerId,
+  () => {
+    editingLabel.value = false
+  },
+)
+
+function startEditLabel() {
+  labelDraft.value = activeTimer.value.label
+  editingLabel.value = true
+  void nextTick(() => {
+    labelInputRef.value?.focus()
+    labelInputRef.value?.select()
+  })
+}
+
+function commitEditLabel() {
+  if (!editingLabel.value) return
+  editingLabel.value = false
+  const clean = labelDraft.value.trim()
+  if (clean && clean !== activeTimer.value.label) {
+    emit('rename-timer', { id: activeTimer.value.id, label: clean })
+  }
+}
+
+function cancelEditLabel() {
+  editingLabel.value = false
+}
+
 function handleQuickAdd() {
-  const ms = parseDurationExpression(customExpr.value)
+  const raw = customExpr.value.trim()
+  if (!raw) {
+    inputError.value =
+      props.locale === 'en'
+        ? 'Enter a duration, e.g. 5m, 1h30m, 90s, 05:00'
+        : '请输入时长，支持 5m、1h30m、90s、05:00、25分钟'
+    return
+  }
+  const ms = parseDurationExpression(raw)
   if (!ms) {
     inputError.value =
       props.locale === 'en'
-        ? 'Try: 5m, 1h30m, 90s, 05:00'
-        : '支持 5m、1h30m、90s、05:00、25分钟'
+        ? `Invalid format "${raw.slice(0, 16)}" — try 5m, 1h30m, 05:00`
+        : `无法识别「${raw.slice(0, 16)}」，支持 5m、1h30m、90s、05:00`
     return
   }
   inputError.value = ''
@@ -165,7 +206,28 @@ function handlePresetClick(preset: (typeof COUNTDOWN_PRESETS)[number]) {
             {{ statusLabel }}
           </span>
           <div class="ring-time mono" data-testid="countdown-display">{{ formattedRemaining }}</div>
-          <div class="ring-label">{{ activeTimer.label }}</div>
+          <input
+            v-if="editingLabel"
+            ref="labelInputRef"
+            v-model="labelDraft"
+            type="text"
+            maxlength="36"
+            class="input ring-label-input"
+            data-testid="timer-label-input"
+            @keydown.enter.prevent="commitEditLabel"
+            @keydown.escape.prevent="cancelEditLabel"
+            @blur="commitEditLabel"
+          />
+          <button
+            v-else
+            type="button"
+            class="ring-label ring-label-btn"
+            data-testid="timer-label-btn"
+            :title="locale === 'en' ? 'Click to rename timer' : '点击重命名计时器'"
+            @click="startEditLabel"
+          >
+            {{ activeTimer.label }}
+          </button>
           <div class="ring-total mono">
             {{ formatDurationLabel(activeTimer.durationMs, locale) }}
           </div>
@@ -207,15 +269,21 @@ function handlePresetClick(preset: (typeof COUNTDOWN_PRESETS)[number]) {
         </button>
       </div>
 
-      <button
-        type="button"
-        class="btn btn-soft float-cta"
-        data-testid="countdown-float-btn"
-        @click="emit('open-float')"
-      >
-        <AppIcon name="pip" :size="14" />
-        {{ locale === 'en' ? 'Pop out Always-on-Top Floating Widget' : '一键弹出桌面置顶悬浮小窗' }}
-      </button>
+      <div class="hero-footer">
+        <div class="kbd-hint">
+          <span class="kbd">Space</span>
+          <span>{{ locale === 'en' ? 'Start / Pause' : '开始 / 暂停' }}</span>
+        </div>
+        <button
+          type="button"
+          class="btn btn-soft float-cta"
+          data-testid="countdown-float-btn"
+          @click="emit('open-float')"
+        >
+          <AppIcon name="pip" :size="14" />
+          {{ locale === 'en' ? 'Pop out Always-on-Top Floating Widget' : '一键弹出桌面置顶悬浮小窗' }}
+        </button>
+      </div>
     </section>
 
     <!-- Right Column: Quick Presets + Natural Input + Multi-Timer Queue -->
@@ -249,8 +317,10 @@ function handlePresetClick(preset: (typeof COUNTDOWN_PRESETS)[number]) {
             v-model="customExpr"
             type="text"
             class="input mono expr-input"
+            :class="{ 'is-error': Boolean(inputError) }"
             data-testid="quick-expr-input"
             :placeholder="locale === 'en' ? '12m / 01:30' : '如 12m / 15分'"
+            @input="inputError = ''"
           />
           <input
             v-model="customLabel"
@@ -394,6 +464,33 @@ function handlePresetClick(preset: (typeof COUNTDOWN_PRESETS)[number]) {
   white-space: nowrap;
 }
 
+.ring-label-btn {
+  padding: 1px 6px;
+  border-radius: 5px;
+  transition: background 0.14s, color 0.14s;
+}
+
+.ring-label-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.ring-label-input {
+  width: 148px;
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.hero-footer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
 .ring-total {
   font-size: 11px;
   color: var(--text-muted);
@@ -488,6 +585,11 @@ function handlePresetClick(preset: (typeof COUNTDOWN_PRESETS)[number]) {
 .expr-input {
   flex: 1.1;
   min-width: 0;
+}
+
+.expr-input.is-error {
+  border-color: var(--err-text);
+  box-shadow: 0 0 0 2px var(--err-bg);
 }
 
 .label-input {

@@ -26,11 +26,13 @@ const stats = computed(() => computeLapStats(props.laps))
 const reversedLaps = computed(() => [...props.laps].reverse())
 
 function handleCopyAll() {
+  if (props.laps.length === 0) return
   const csv = lapsToCsv(props.laps)
   emit('copy', csv, 'CSV')
 }
 
 function handleExportCsv() {
+  if (props.laps.length === 0) return
   emit('export-csv', 'funtime-stopwatch-laps.csv', lapsToCsv(props.laps))
 }
 </script>
@@ -40,15 +42,23 @@ function handleExportCsv() {
     <!-- Top Digital Chronometer Readout -->
     <section class="card display-card">
       <div class="display-top">
-        <span class="pill" :class="running ? 'pill-ok' : elapsedMs > 0 ? 'pill-warn' : 'pill-neutral'">
-          {{
-            running
-              ? t(locale, 'countdown.running')
-              : elapsedMs > 0
-                ? t(locale, 'countdown.paused')
-                : t(locale, 'countdown.ready')
-          }}
-        </span>
+        <div class="display-status-group">
+          <span class="pill" :class="running ? 'pill-ok' : elapsedMs > 0 ? 'pill-warn' : 'pill-neutral'">
+            {{
+              running
+                ? t(locale, 'countdown.running')
+                : elapsedMs > 0
+                  ? t(locale, 'countdown.paused')
+                  : t(locale, 'countdown.ready')
+            }}
+          </span>
+          <span class="kbd-hint hide-sm">
+            <span class="kbd">Space</span>
+            <span>{{ locale === 'en' ? 'Start/Pause' : '启停' }}</span>
+            <span class="kbd">L</span>
+            <span>{{ locale === 'en' ? 'Lap' : '记次' }}</span>
+          </span>
+        </div>
         <button type="button" class="btn btn-sm btn-soft" @click="emit('open-float')">
           <AppIcon name="pip" :size="13" />
           {{ t(locale, 'action.floatWindow') }}
@@ -203,6 +213,13 @@ function handleExportCsv() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.display-status-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .stopwatch-readout {
@@ -356,6 +373,9 @@ function handleExportCsv() {
   }
   .stats-bar {
     grid-template-columns: 1fr;
+  }
+  .hide-sm {
+    display: none;
   }
 }
 </style>
